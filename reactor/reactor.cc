@@ -7,7 +7,6 @@ int main() {
     reactor* rt = new reactor();
     
     rt->init();
-    std::cout << "init complete" << std::endl;
     rt->run();
 
     return 0;
