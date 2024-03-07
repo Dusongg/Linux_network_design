@@ -26,17 +26,28 @@
 
 namespace my_reactro {
     class reactor;
-
     struct conn_item {
+        conn_item() {};
+        ~conn_item() {};
+        union ar_func_t {
+            ar_func_t() {};
+            ~ar_func_t() {};
+            std::function<int(reactor* ts, int)> accept_func;
+            std::function<int(reactor* ts, int)> receive_func;
+        };
         int fd;
         char rbuffer[BUFFER_LENGTH];
         int rlen;
         char wbuffer[BUFFER_LENGTH];
         int wlen;
-    };
+
+        ar_func_t ar_func;
+        std::function<int(reactor* ts, int)> send_func;
+    };  
     class reactor {
     public:
         reactor() = default;
+        ~reactor() = default;
         int init() {
             this->sockfd = socket(AF_INET, SOCK_STREAM, 0);
             struct sockaddr_in serveraddr;
@@ -62,6 +73,7 @@ namespace my_reactro {
             this->epfd = epoll_create(1);
             set_event(sockfd, EPOLLIN, EPOLL_CTL_ADD);
             connlist[sockfd].fd = sockfd;
+            connlist[sockfd].ar_func.accept_func = accept_cb;
 
             return 0;
         }
@@ -70,55 +82,55 @@ namespace my_reactro {
                 int nready = epoll_wait(this->epfd, events, MAX_EVENTS_SIZE, -1);  //阻塞等待
                 for (int i = 0; i < nready; i++) {
                     int connfd = events[i].data.fd;
-                    if (connfd == sockfd) {
-                        int fd = accept_cb();
-                    }
-                    else if (events[i].events & EPOLLIN) {
-                        int cnt = receive_cb(connfd);
+                    if (events[i].events & EPOLLIN) {
+                        int cnt = connlist[connfd].ar_func.receive_func(this, connfd);
                     } 
                     else if (events[i].events & EPOLLOUT) {
-                        int cnt  = send_cb(connfd);
+                        int cnt  = connlist[connfd].send_func(this, connfd);
                     }
                 }
             }
         }
     private:
-        int accept_cb() {
+        static int accept_cb(reactor* ts, int) {
             struct sockaddr_in clientaddr;
             socklen_t len = sizeof(clientaddr);
-            int clientfd = accept(sockfd, (struct sockaddr*)&clientaddr, &len);
+            int clientfd = accept(ts->sockfd, (struct sockaddr*)&clientaddr, &len);
             if (clientfd < 0) {
                 return -1;
             }
 
-            set_event(clientfd, EPOLLIN, EPOLL_CTL_ADD);
-            connlist[clientfd].fd = clientfd;
-            memset(connlist[clientfd].rbuffer, 0, BUFFER_LENGTH);
-            connlist[clientfd].rlen = 0;
-            memset(connlist[clientfd].wbuffer, 0, BUFFER_LENGTH);
-            connlist[clientfd].wlen = 0;
+            ts->set_event(clientfd, EPOLLIN, EPOLL_CTL_ADD);
+            ts->connlist[clientfd].fd = clientfd;
+            memset(ts->connlist[clientfd].rbuffer, 0, BUFFER_LENGTH);
+            ts->connlist[clientfd].rlen = 0;
+            memset(ts->connlist[clientfd].wbuffer, 0, BUFFER_LENGTH);
+            ts->connlist[clientfd].wlen = 0;
+
+            ts->connlist[clientfd].ar_func.receive_func = receive_cb;
+            ts->connlist[clientfd].send_func = send_cb;
 
             return clientfd;
         }
-        int receive_cb(int fd) {
-            char* buffer = connlist[fd].rbuffer;
-            int idx = connlist[fd].rlen;    
+        static int receive_cb(reactor* ts, int fd) {
+            char* buffer = ts->connlist[fd].rbuffer;
+            int idx = ts->connlist[fd].rlen;    
 
             int cnt = recv(fd, buffer + idx, BUFFER_LENGTH - idx, 0);
             std::cout << buffer << std::endl;        //打印接收到的数据
 
             if (cnt == 0) {
                 //两个函数都需要做
-                epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+                epoll_ctl(ts->epfd, EPOLL_CTL_DEL, fd, NULL);
                 close(fd);
                 return -1;
             }
-            connlist[fd].rlen += cnt;
+            ts->connlist[fd].rlen += cnt;
 
-            set_event(fd, EPOLLOUT, EPOLL_CTL_MOD);
+            ts->set_event(fd, EPOLLOUT, EPOLL_CTL_MOD);
             return cnt;
         }
-        int send_cb(int fd) {
+        static int send_cb(reactor* ts, int fd) {
 #if 0
             /*  求文件内容长度
             std::ifstream in(htmlpath, std::ios::binary);
@@ -146,15 +158,15 @@ namespace my_reactro {
         //     }
         //   close(filefd);
 #endif
-            connlist[fd].wlen = sprintf(connlist[fd].wbuffer, 
+            ts->connlist[fd].wlen = sprintf(ts->connlist[fd].wbuffer, 
             "HTTP/1.1 200 OK\r\n"
             "Accept-Ranges: bytes\r\n"
             "Content-Length: 82\r\n"
             "Content-Type: text/html\r\n"
             "Date: Sat, 06 Aug 2023 13:16:46 GMT\r\n\r\n"
             "<html><head><title>test</title></head><body><h1>test</h1></body></html>\r\n\r\n");
-            int send_len = send(fd, connlist[fd].wbuffer, connlist[fd].wlen, 0);
-            set_event(fd, EPOLLIN, EPOLL_CTL_MOD);
+            int send_len = send(fd, ts->connlist[fd].wbuffer, ts->connlist[fd].wlen, 0);
+            ts->set_event(fd, EPOLLIN, EPOLL_CTL_MOD);
             return send_len;
 
         }

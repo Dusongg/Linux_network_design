@@ -4,10 +4,12 @@
 using namespace my_reactro;
 
 int main() {
-    reactor* rt = new reactor();
+    // reactor* rt = new reactor();
     
-    rt->init();
-    rt->run();
-
+    // rt->init();
+    // rt->run();
+    reactor rt;
+    rt.init();
+    rt.run();
     return 0;
 }
