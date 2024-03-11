@@ -46,8 +46,17 @@ namespace my_reactro {
     };  
     class reactor {
     public:
-        reactor() = default;
-        ~reactor() = default;
+        static reactor* get_Singleton() {
+            if (singleton == nullptr) {
+                singleton = new reactor();
+                return singleton;
+            } else {
+                return singleton;
+            }
+        }
+        ~reactor() { std::cout << "~reactor" << std::endl; }
+        reactor(const reactor&) = delete;
+        reactor& opeator(const reactor&) = delete;
         int init() {
             this->sockfd = socket(AF_INET, SOCK_STREAM, 0);
             struct sockaddr_in serveraddr;
@@ -92,6 +101,8 @@ namespace my_reactro {
             }
         }
     private:
+        reactor() {}
+
         static int accept_cb(reactor* ts, int) {
             struct sockaddr_in clientaddr;
             socklen_t len = sizeof(clientaddr);
@@ -180,9 +191,11 @@ namespace my_reactro {
 
 
     private:
+        static reactor* singleton;
         int sockfd;
         int epfd;
         struct epoll_event events[MAX_EVENTS_SIZE] = {0};
         conn_item connlist[MAX_EVENTS_SIZE];
     };
+    reactor* reactor::singleton = nullptr;
 }
