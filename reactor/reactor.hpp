@@ -52,7 +52,6 @@ namespace my_reactro {
     class reactor {
     public:
         static reactor* get_Singleton() {
-
             if (singleton == nullptr) {   //
                 std::lock_guard<std::mutex> lock(init_mutex);
                 if (singleton == nullptr) {
@@ -61,30 +60,30 @@ namespace my_reactro {
             } 
             return singleton;
         }
-        ~reactor() { std::cout << "~reactor" << std::endl; }
+        ~reactor() {
+            close(epfd);
+            close(sockfd);
+        }
         reactor(const reactor&) = delete;
         reactor& opeator(const reactor&) = delete;
 
     public:
         int init() {
+            
             this->sockfd = socket(AF_INET, SOCK_STREAM, 0);
             struct sockaddr_in serveraddr;
-            
             memset(&serveraddr, 0, sizeof(struct sockaddr_in));
-
             serveraddr.sin_family = AF_INET;
             serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
             serveraddr.sin_port = htons(PORT);
-
+            //端口复用
             int opt = 1;
-            setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR|SO_REUSEPORT, &opt, sizeof(opt)); // 防止偶发性的服务器无法进行立即重启(tcp协议的时候再说)
-
+            setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR|SO_REUSEPORT, &opt, sizeof(opt));
 
             if (bind(sockfd, (struct sockaddr*)&serveraddr, sizeof(struct sockaddr)) < 0) {
                 perror("bind error");
                 return -1;
             }
-
             
             listen(sockfd, 10);
 
