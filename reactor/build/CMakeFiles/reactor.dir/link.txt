@@ -1,1 +1,1 @@
-/usr/bin/c++      CMakeFiles/reactor.dir/reactor.cc.o  -o reactor 
+/usr/bin/c++      CMakeFiles/reactor.dir/reactor.cc.o  -o reactor -lpthread 
