@@ -19,6 +19,9 @@
 
 #include <iostream>
 
+#include <mutex>
+
+
 #define BUFFER_LENGTH 1024
 #define MAX_EVENTS_SIZE 1024
 #define PORT 8888
@@ -44,19 +47,25 @@ namespace my_reactro {
         ar_func_t ar_func;
         std::function<int(reactor* ts, int)> send_func;
     };  
+
+
     class reactor {
     public:
         static reactor* get_Singleton() {
-            if (singleton == nullptr) {
-                singleton = new reactor();
-                return singleton;
-            } else {
-                return singleton;
-            }
+
+            if (singleton == nullptr) {   //
+                std::lock_guard<std::mutex> lock(init_mutex);
+                if (singleton == nullptr) {
+                    singleton = new reactor();
+                }
+            } 
+            return singleton;
         }
         ~reactor() { std::cout << "~reactor" << std::endl; }
         reactor(const reactor&) = delete;
         reactor& opeator(const reactor&) = delete;
+
+    public:
         int init() {
             this->sockfd = socket(AF_INET, SOCK_STREAM, 0);
             struct sockaddr_in serveraddr;
@@ -101,7 +110,6 @@ namespace my_reactro {
             }
         }
     private:
-        reactor() {}
 
         static int accept_cb(reactor* ts, int) {
             struct sockaddr_in clientaddr;
@@ -128,7 +136,7 @@ namespace my_reactro {
             int idx = ts->connlist[fd].rlen;    
 
             int cnt = recv(fd, buffer + idx, BUFFER_LENGTH - idx, 0);
-            std::cout << buffer << std::endl;        //打印接收到的数据
+            // std::cout << buffer << std::endl;        //打印接收到的数据
 
             if (cnt == 0) {
                 //两个函数都需要做
@@ -169,14 +177,7 @@ namespace my_reactro {
         //     }
         //   close(filefd);
 #endif
-            ts->connlist[fd].wlen = sprintf(ts->connlist[fd].wbuffer, 
-            "HTTP/1.1 200 OK\r\n"
-            "Accept-Ranges: bytes\r\n"
-            "Content-Length: 82\r\n"
-            "Content-Type: text/html\r\n"
-            "Date: Sat, 06 Aug 2023 13:16:46 GMT\r\n\r\n"
-            "<html><head><title>test</title></head><body><h1>test</h1></body></html>\r\n\r\n");
-            int send_len = send(fd, ts->connlist[fd].wbuffer, ts->connlist[fd].wlen, 0);
+            int send_len = send(fd, ts->connlist[fd].rbuffer, ts->connlist[fd].rlen, 0);
             ts->set_event(fd, EPOLLIN, EPOLL_CTL_MOD);
             return send_len;
 
@@ -191,11 +192,14 @@ namespace my_reactro {
 
 
     private:
+        reactor() {}
         static reactor* singleton;
         int sockfd;
         int epfd;
         struct epoll_event events[MAX_EVENTS_SIZE] = {0};
         conn_item connlist[MAX_EVENTS_SIZE];
+        static std::mutex init_mutex;
     };
+    std::mutex reactor::init_mutex;
     reactor* reactor::singleton = nullptr;
 }

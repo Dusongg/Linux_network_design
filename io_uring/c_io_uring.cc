@@ -51,7 +51,7 @@ int set_event_recv(struct io_uring *ring, int sockfd,
 	
 	io_uring_prep_recv(sqe, sockfd, buf, len, flags);
 	memcpy(&sqe->user_data, &accept_info, sizeof(struct conn_info));
-
+	return 0;
 }
 
 
@@ -67,7 +67,7 @@ int set_event_send(struct io_uring *ring, int sockfd,
 	
 	io_uring_prep_send(sqe, sockfd, buf, len, flags);
 	memcpy(&sqe->user_data, &accept_info, sizeof(struct conn_info));
-
+	return 0;
 }
 
 
@@ -85,7 +85,7 @@ int set_event_accept(struct io_uring *ring, int sockfd, struct sockaddr *addr,
 	//提交请求到sqe里 ,对应accept :封装 io_uring_register，异步
 	io_uring_prep_accept(sqe, sockfd, (struct sockaddr*)addr, addrlen, flags);  		//这里不会阻塞，异步accept
 	memcpy(&sqe->user_data, &accept_info, sizeof(struct conn_info));
-
+	return 0;
 }
 
 
@@ -154,6 +154,13 @@ int main(int argc, char *argv[]) {
 				if (ret == 0) {
 					close(result.fd);
 				} else if (ret > 0) {
+					ret = sprintf(buffer, 
+		"HTTP/1.1 200 OK\r\n"
+		"Accept-Ranges: bytes\r\n"
+		"Content-Length: 82\r\n"
+		"Content-Type: text/html\r\n"
+		"Date: Sat, 06 Aug 2023 13:16:46 GMT\r\n\r\n"
+		"<html><head><title>0voice.king</title></head><body><h1>King</h1></body></html>\r\n\r\n");
 					set_event_send(&ring, result.fd, buffer, ret, 0);
 				}
 			}  else if (result.event == EVENT_WRITE) {
