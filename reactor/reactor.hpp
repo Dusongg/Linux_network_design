@@ -1,4 +1,5 @@
-#include <sys/socket.h>
+// #include <sys/socket.h>
+#include "../socket/socket.hpp"
 #include <errno.h>
 #include <netinet/in.h>
 
@@ -24,7 +25,6 @@
 
 #define BUFFER_LENGTH 1024
 #define MAX_EVENTS_SIZE 1024
-#define PORT 8888
 #define HTMLPATH "./root/index.html"
 
 namespace my_reactro {
@@ -62,35 +62,24 @@ namespace my_reactro {
         }
         ~reactor() {
             close(epfd);
-            close(sockfd);
         }
         reactor(const reactor&) = delete;
         reactor& opeator(const reactor&) = delete;
 
     public:
         int init() {
-            
-            this->sockfd = socket(AF_INET, SOCK_STREAM, 0);
-            struct sockaddr_in serveraddr;
-            memset(&serveraddr, 0, sizeof(struct sockaddr_in));
-            serveraddr.sin_family = AF_INET;
-            serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
-            serveraddr.sin_port = htons(PORT);
+            int listenfd = _socket.get_sockfd();
             //端口复用
             int opt = 1;
-            setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR|SO_REUSEPORT, &opt, sizeof(opt));
-
-            if (bind(sockfd, (struct sockaddr*)&serveraddr, sizeof(struct sockaddr)) < 0) {
-                perror("bind error");
-                return -1;
-            }
+            setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR|SO_REUSEPORT, &opt, sizeof(opt));
             
-            listen(sockfd, 10);
+            _socket.Bind(8888);
+            _socket.Listen();
 
             this->epfd = epoll_create(1);
-            set_event(sockfd, EPOLLIN, EPOLL_CTL_ADD);
-            connlist[sockfd].fd = sockfd;
-            connlist[sockfd].ar_func.accept_func = accept_cb;
+            set_event(listenfd, EPOLL_CTL_ADD, EPOLLIN);
+            connlist[listenfd].fd = listenfd;
+            connlist[listenfd].ar_func.accept_func = accept_cb;
 
             return 0;
         }
@@ -111,14 +100,9 @@ namespace my_reactro {
     private:
 
         static int accept_cb(reactor* ts, int) {
-            struct sockaddr_in clientaddr;
-            socklen_t len = sizeof(clientaddr);
-            int clientfd = accept(ts->sockfd, (struct sockaddr*)&clientaddr, &len);
-            if (clientfd < 0) {
-                return -1;
-            }
+            int clientfd = ts->_socket.Accept();
 
-            ts->set_event(clientfd, EPOLLIN, EPOLL_CTL_ADD);
+            ts->set_event(clientfd, EPOLL_CTL_ADD, EPOLLIN);
             ts->connlist[clientfd].fd = clientfd;
             memset(ts->connlist[clientfd].rbuffer, 0, BUFFER_LENGTH);
             ts->connlist[clientfd].rlen = 0;
@@ -145,44 +129,23 @@ namespace my_reactro {
             }
             ts->connlist[fd].rlen += cnt;
 
-            ts->set_event(fd, EPOLLOUT, EPOLL_CTL_MOD);
+            ts->set_event(fd, EPOLL_CTL_MOD, EPOLLOUT);
             return cnt;
         }
         static int send_cb(reactor* ts, int fd) {
-#if 0
-            /*  求文件内容长度
-            std::ifstream in(htmlpath, std::ios::binary);
-            if(!in.is_open()) return "";
-
-            in.seekg(0, std::ios_base::end);
-            auto len = in.tellg();
-            in.seekg(0, std::ios_base::beg);
-            */
-#else 
-        //wrk测试时段错误  : 原因大概出在open函数和stat上
-        //    int filefd = open(HTMLPATH, O_RDONLY);
-
-        //    off_t offset = 0;   //当前读到的偏移量
-        //    struct stat stat_buf;
-        //    fstat(filefd, &stat_buf);
-        //    off_t size = stat_buf.st_size;
-
-        //     while(offset < size) {
-        //         ssize_t send_bytes = sendfile(fd, filefd, &offset, BUFFER_LENGTH);
-        //         if (send_bytes < 0) {
-        //             perror("sendfile failed");
-        //             return 1;
-        //         }
-        //     }
-        //   close(filefd);
-#endif
+            int ret = sprintf(ts->connlist[fd].rbuffer, 
+                "HTTP/1.1 200 OK\r\n"
+                "Accept-Ranges: bytes\r\n"
+                "Content-Length: 75\r\n"
+                "Content-Type: text/html\r\n"
+                "Date: Sat, 06 Aug 2023 13:16:46 GMT\r\n\r\n"
+                "<html><head><title>Dusong</title></head><body><h1>Dusong</h1></body></html>\r\n");
             int send_len = send(fd, ts->connlist[fd].rbuffer, ts->connlist[fd].rlen, 0);
-            ts->set_event(fd, EPOLLIN, EPOLL_CTL_MOD);
+            ts->set_event(fd,  EPOLL_CTL_MOD, EPOLLIN);
             return send_len;
-
         }
 
-        void set_event(int fd, EPOLL_EVENTS event, int op) { 
+        void set_event(int fd, int op, EPOLL_EVENTS event) { 
             struct epoll_event ev;
             ev.events = event;      //EPOLL_EVENTS EPOLLIN/EPOLLOUT
             ev.data.fd = fd;
@@ -193,9 +156,9 @@ namespace my_reactro {
     private:
         reactor() {}
         static reactor* singleton;
-        int sockfd;
+        Socket _socket;
         int epfd;
-        struct epoll_event events[MAX_EVENTS_SIZE] = {0};
+        struct epoll_event events[MAX_EVENTS_SIZE];
         conn_item connlist[MAX_EVENTS_SIZE];
         static std::mutex init_mutex;
     };
