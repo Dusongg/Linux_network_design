@@ -1,5 +1,5 @@
-#include <cstdio>
-#include <ctime>
+#include <stdio.h>
+#include <time.h>
 #include <pthread.h>
 
 #define INF 2
